@@ -276,7 +276,7 @@ diaries (["region:tier"]), quest_points (int)."""
 def check_option(snap, containers, option):
     """Returns a list of unmet reasons for one any_of option (empty = met)."""
     unmet = []
-    for entry in option.get("items", []) + [{"item": e} for e in option.get("equipment", [])]:
+    for entry in option.get("items", []) + [{"item": e} if isinstance(e, str) else e for e in option.get("equipment", [])]:
         name, qty = (entry, 1) if isinstance(entry, str) else (entry["item"], entry.get("qty", 1))
         have = sum(find_item(containers, name).values())
         if have < qty:
@@ -335,7 +335,7 @@ def cmd_plan(args, snap):
     print("\n## Equipment")
     worn = {i["slot"]: i["name"] for i in containers.get("equipment", {}).get("items", [])}
     used_slots = {}
-    for name in plan.get("equipment", []):
+    for name in (e if isinstance(e, str) else e["item"] for e in plan.get("equipment", [])):
         where = find_item(containers, name)
         try:
             slot = wiki_equip_slot(name)

@@ -175,7 +175,7 @@ def parse_quest_requirements(text):
 
         if quest_header_depth is not None and depth <= quest_header_depth:
             quest_header_depth = None
-        if "following quests" in body.lower():
+        if "following quest" in body.lower():
             quest_header_depth = depth
             continue
         if quest_header_depth is not None:
@@ -454,12 +454,14 @@ MAP_RE = re.compile(r'<a[^>]*mw-kartographer-map[^>]*>')
 
 
 def map_points(title, section=None):
-    """Map pins embedded in a page (or one section): [{"x", "y", "plane", "mapid", "context"}].
+    """Map pins on a page (or one section): [{"x", "y", "plane", "mapid", "context", "pin"}].
 
-    `context` is the text of the table row or paragraph the map sits in, so
-    pins on list pages (one map per patch, shop, ...) can be told apart.
+    Two sources: each embedded map's centre ("pin": False), with `context` the
+    text of the table row or paragraph it sits in, so pins on list pages (one
+    map per patch, shop, ...) can be told apart; and the individual markers
+    drawn on those maps ("pin": True), e.g. each birdhouse spot or spawn.
     """
-    params = {"action": "parse", "page": title, "prop": "text", "disablelimitreport": 1, "redirects": 1}
+    params = {"action": "parse", "page": title, "prop": "text|jsconfigvars", "disablelimitreport": 1, "redirects": 1}
     if section is not None:
         params.update(section_params(title, section))
     data = api(**params)
@@ -474,7 +476,18 @@ def map_points(title, section=None):
                 continue
             context = re.sub(r"\s+", " ", html_to_text(MAP_RE.sub("", chunk.split("<a class=\"mw-kartographer")[0]))).strip(" |-")
             points.append({"x": int(float(attrs["lon"])), "y": int(float(attrs["lat"])), "plane": int(attrs.get("plane", 0)),
-                           "mapid": int(attrs.get("mapid", 0)), "context": context[:120]})
+                           "mapid": int(attrs.get("mapid", 0)), "context": context[:120], "pin": False})
+    live = (data["parse"].get("jsconfigvars") or {}).get("wgKartographerLiveData") or {}
+    for group in live.values():
+        for collection in group if isinstance(group, list) else [group]:
+            for feature in (collection or {}).get("features", []):
+                geometry, props = feature.get("geometry") or {}, feature.get("properties") or {}
+                if geometry.get("type") != "Point":
+                    continue
+                x, y = geometry["coordinates"][:2]
+                label = clean_wikitext(props.get("title") or "") or re.sub(r"\s+", " ", html_to_text(props.get("description") or ""))
+                points.append({"x": int(x), "y": int(y), "plane": int(props.get("plane", 0)),
+                               "mapid": int(props.get("mapID", 0)), "context": label[:120], "pin": True})
     return points
 
 
@@ -485,7 +498,8 @@ def cmd_coords(args):
     if not points:
         print("none (try another page or --section)")
     for p in points:
-        print("- {} {} {}{}  {}".format(p["x"], p["y"], p["plane"], "" if p["mapid"] == 0 else "  mapid {}".format(p["mapid"]), p["context"]))
+        print("- {} {} {}{}  {}{}".format(p["x"], p["y"], p["plane"], "" if p["mapid"] == 0 else "  mapid {}".format(p["mapid"]),
+                                         "[pin] " if p["pin"] else "[map centre] ", p["context"]))
 
 
 def wiki_norm(name):
