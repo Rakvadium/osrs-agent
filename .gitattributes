@@ -1,0 +1,4 @@
+# Shell scripts must keep LF endings to run on macOS/Linux; batch files keep CRLF.
+*.sh text eol=lf
+plugin/gradlew text eol=lf
+*.bat text eol=crlf

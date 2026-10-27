@@ -67,3 +67,9 @@ tasks.register('shadowJar', Jar) {
 	archiveClassifier.set('shadow')
 	archiveFileName.set("${rootProject.name}-${project.version}-all.jar")
 }
+
+// src/test holds the client launcher for `./gradlew run`, not unit tests;
+// Gradle 9 otherwise fails `build` when no tests are discovered.
+tasks.named('test') {
+	failOnNoDiscoveredTests = false
+}

@@ -9,7 +9,7 @@ The plugin works in the background: there's nothing to click and no overlay. It 
 ## How to use it
 
 **Starting the client** (the plugin isn't on the Plugin Hub, so the normal RuneLite launcher won't load it)
-1. Open a terminal in this `plugin` folder and run `./gradlew run` (`gradlew.bat run` in Windows cmd). The first run downloads RuneLite and takes a minute. This *is* "launching the client in developer mode": no IDE is needed.
+1. Install Java 17 or newer (21 recommended). Open a terminal in this `plugin` folder and run `./gradlew run` (`.\gradlew run` in PowerShell, `gradlew.bat run` in Command Prompt). The first run downloads RuneLite and takes a minute. This *is* "launching the client in developer mode": no IDE is needed.
 2. A RuneLite window opens with the plugin loaded. Closing the window stops it.
 
 **Logging in with a Jagex account** (first time only)

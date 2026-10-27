@@ -14,11 +14,13 @@ RuneLite + plugin ──writes──▶ snapshot .json ◀──reads── /rs-
 | `skills/` | The `/rs-regular`, `/rs-ironman` and `/rs-g-ironman` skills, plus the shared `PROCEDURE.md` and `GATES.md` |
 | `install.py` | Copies the skills into Claude Code and/or Kiro |
 
+**New here? Follow [QUICKSTART.md](QUICKSTART.md)**: install, start the client, log in, and ask your first question.
+
 ## Setup
 
 1. **Plugin:** follow [plugin/README.md](plugin/README.md). Log in once and open your bank.
 2. **Skills:** run `python install.py`. This installs for Claude Code and Kiro, for all projects. Use `--tool claude` or `--tool kiro` for just one, and `--uninstall` to remove them. Re-run the script after editing anything in `skills/` or `core/`.
-3. **Requirement:** Python 3.8+ (standard library only).
+3. **Requirements:** Java 17+ for the plugin (21 recommended), and Python 3.8+ for the skills (standard library only).
 
 ## Use
 
