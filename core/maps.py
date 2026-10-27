@@ -27,18 +27,20 @@ TILE_DIR = wiki.CACHE_DIR / "tiles"
 DAY = 24 * 3600
 
 CSS = """
-.route { margin-top:26px; }
+.route { margin-top:16px; }
 .route h2.title { font-size:15px; color:#ff981f; text-transform:uppercase; letter-spacing:.08em; margin:0 0 10px; }
-.legs { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:16px; }
-.leg { background:#3e3529; border:3px solid #5a4d3c; border-radius:6px; overflow:hidden; }
+.legs { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap:16px; margin-top:16px; }
+.leg { background:#3e3529; border:3px solid #5a4d3c; border-radius:6px; overflow:hidden; min-width:0; }
 .leg .head { padding:8px 10px 6px; }
 .leg .head b { color:#ff981f; } .leg .head .how { color:#e8dcc0; } .leg .head .note { color:#b8a888; font-size:12px; }
 .leg .lock { display:inline-block; font-size:10px; font-weight:bold; background:#7a2e2e; color:#fff; border-radius:3px; padding:0 5px; margin-left:6px; vertical-align:1px; }
-.map { position:relative; overflow:hidden; background:#0e2a3a; }
-.map img.tile { position:absolute; width:256px; height:256px; image-rendering:pixelated; }
-.map svg { position:absolute; left:0; top:0; }
+.map { background:#0e2a3a; }
+.map svg { display:block; width:100%; height:auto; }
+.map image { image-rendering:pixelated; }
 .map text { font:bold 12px system-ui, sans-serif; paint-order:stroke; stroke:#000; stroke-width:3px; }
-.overview .map { border:3px solid #5a4d3c; border-radius:6px; }
+.overview .map { border:3px solid #5a4d3c; border-radius:6px; overflow:hidden; max-width:700px; }
+/* Maps scale down on phones; enlarge the overview's labels so they stay readable. */
+@media (max-width: 600px) { .overview .map text { font-size:20px; stroke-width:5px; } }
 """
 
 _version = None
@@ -96,13 +98,14 @@ class View:
         """Pixel centre of game square (x, y) in the view."""
         return x * self.s - self.x0 + self.s / 2, -y * self.s - self.y0 - self.s / 2
 
-    def tiles_html(self):
+    def tiles_svg(self):
+        """The map tiles covering the view, as SVG <image> elements in view pixels."""
         out = []
         for tx in range(math.floor(self.x0 / 256), math.floor((self.x0 + self.w) / 256) + 1):
             for ty in range(math.floor(-(self.y0 + self.h) / 256), math.floor(-self.y0 / 256) + 1):
                 src = tile_src(self.mapid, self.zoom, self.plane, tx, ty)
                 if src:
-                    out.append('<img class="tile" src="{}" style="left:{:.0f}px;top:{:.0f}px" alt="">'.format(
+                    out.append('<image href="{}" x="{:.0f}" y="{:.0f}" width="256" height="256"/>'.format(
                         src, tx * 256 - self.x0, -(ty + 1) * 256 - self.y0))
         return "".join(out)
 
@@ -159,10 +162,13 @@ def marker_svg(view, p, label, color, number=None, anchor="start"):
         x, y, color, num, tx, ty, text_anchor, color, html.escape(label))
 
 
-def svg(view, body):
-    return ('<svg width="{w:.0f}" height="{h:.0f}" viewBox="0 0 {w:.0f} {h:.0f}">'
+def svg(view, body, tiles=""):
+    """One self-scaling map image: tiles underneath, markers and paths on top.
+    The viewBox keeps everything aligned at any rendered width."""
+    return ('<svg viewBox="0 0 {w:.0f} {h:.0f}" role="img">'
             '<defs><marker id="head" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">'
-            '<path d="M0,0 L10,5 L0,10 z" fill="#ffd23f" stroke="#000" stroke-width="1"/></marker></defs>{b}</svg>').format(w=view.w, h=view.h, b=body)
+            '<path d="M0,0 L10,5 L0,10 z" fill="#ffd23f" stroke="#000" stroke-width="1"/></marker></defs>{t}{b}</svg>').format(
+        w=view.w, h=view.h, t=tiles, b=body)
 
 
 def squares(a, b):
@@ -237,10 +243,9 @@ def leg_html(i, leg, width=340, height=230):
         run = "~{} squares, straight line (no walking path found)".format(dist)
     return ('<div class="leg"><div class="head"><b>{i}. {title}</b>{lock}<br><span class="how">{method}</span> · '
             '<span class="note">{run}{note}</span></div>'
-            '<div class="map" style="width:{w}px;height:{h}px">{tiles}{svg}</div></div>').format(
+            '<div class="map">{svg}</div></div>').format(
         i=i, title=html.escape(leg["title"]), lock=lock, method=html.escape(leg.get("method", "")), run=run,
-        note=" · " + html.escape(leg["note"]) if leg.get("note") else "", w=width, h=height,
-        tiles=view.tiles_html(), svg=svg(view, body))
+        note=" · " + html.escape(leg["note"]) if leg.get("note") else "", svg=svg(view, body, view.tiles_svg()))
 
 
 class ScaledView:
@@ -274,12 +279,12 @@ def overview_html(legs, width=700, max_height=420, margin=40):
     marks = ScaledView(view, scale)
     body = "".join(marker_svg(marks, leg["target"], leg.get("short", leg["title"]), "#ffd23f", number=i)
                    for i, leg in legs)
-    return ('<div class="overview"><div class="map" style="width:{w:.0f}px;height:{h:.0f}px">'
-            '<div style="position:absolute;left:0;top:0;width:{nw:.0f}px;height:{nh:.0f}px;transform:scale({sc:.4f});transform-origin:0 0">{tiles}</div>'
-            '{svg}</div></div>').format(w=marks.w, h=marks.h, nw=natural_w, nh=natural_h, sc=scale,
-                                         tiles=view.tiles_html(), svg=svg(marks, body))
+    tiles = '<g transform="scale({:.4f})">{}</g>'.format(scale, view.tiles_svg())
+    return '<div class="overview"><div class="map">{}</div></div>'.format(svg(marks, body, tiles))
 
 
 def route_html(legs, title="Route"):
-    return '<div class="route"><h2 class="title">{}</h2>{}<div class="legs" style="margin-top:16px">{}</div></div>'.format(
-        html.escape(title), overview_html(list(enumerate(legs, 1))), "".join(leg_html(i, leg) for i, leg in enumerate(legs, 1)))
+    """Overview plus one map per leg; `title=None` when a report heading already introduces it."""
+    heading = '<h2 class="title">{}</h2>'.format(html.escape(title)) if title else ""
+    return '<div class="route">{}{}<div class="legs">{}</div></div>'.format(
+        heading, overview_html(list(enumerate(legs, 1))), "".join(leg_html(i, leg) for i, leg in enumerate(legs, 1)))

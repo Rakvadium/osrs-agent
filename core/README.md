@@ -31,11 +31,13 @@ Searches teleport items, spells, fairy rings, quetzals, spirit trees, gnome glid
 
 `wiki.py coords "<page>" [--section ...]` gives the other half: the coordinates of the map pins on a wiki page, such as each farming patch on `Farming/Patch locations`.
 
-## `card.py`: plan image cards
+## `card.py`: plan cards
 
 ```
-python card.py plan.json --rsn NAME --title "Optimal herb run"
+python card.py plan.json --rsn NAME --title "Optimal herb run" [--report answer.md]
 ```
+
+With `--report`, the card holds the whole answer. The Markdown file is rendered as the page, and lines holding only `{{loadout}}` or `{{route}}` place the loadout panels and route maps. The page is responsive: on a phone, panels stack, maps scale to the screen width, wide tables scroll sideways, and a "Getting the loadout" list replaces hover tooltips. `report.py` is the small Markdown renderer it uses: headings, paragraphs, nested lists, tables, bold, italics, code and links.
 
 Renders the plan's loadout as an in-game-style card: the equipment screen and a 28-slot inventory grid with wiki icons, including stack-size icons and quantity labels. Each item is drawn by its status against the snapshot: in place, owned (equip it), in the bank (withdraw it), or not owned (greyed out). An item's optional `"note"` shows on hover. The output is a single self-contained HTML file; the script prints its path. Use `--icon-paths --inline` for a lighter file, for viewers that display local images and frame the card themselves.
 

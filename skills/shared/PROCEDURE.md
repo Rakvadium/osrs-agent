@@ -137,9 +137,13 @@ Stage 1 — <unlocks> — needs: <requirements with your current levels>
 
 All classes end with `## Verify in-game`, covering the blind spots below and any `[CHECK]` items.
 
-**Plan card.** Whenever the answer includes a loadout or a route, render it as an image card. Run `card.py <plan file> --rsn NAME --title "<activity>"` on the same plan JSON you checked in step 5. Put the path the script prints into the answer as a link.
+**Plan card.** Every answer except a short Question answer also becomes a plan card: a single HTML page holding the **complete answer**, with loadout panels and route maps in place. It reads well on a phone. Once the answer is written:
 
-- **Loadout:** before rendering, give every item that isn't in place a `"note"` saying how to get it ("Stage 3: Ardougne Medium diary", "GE ~230 gp"); the note shows on hover. Use exact wiki item names: icons are looked up by name, and anything without an icon appears as plain text on the card.
+1. Save the answer, exactly as you give it in chat, as Markdown in a temporary file. Put a line holding only `{{loadout}}` where the loadout panels belong (under the loadout heading), and a line holding only `{{route}}` where the maps belong (under the route heading). Anything without a placeholder is added after the text.
+2. Run `card.py <plan file> --rsn NAME --title "<activity>" --report <markdown file>` on the same plan JSON you checked in step 5.
+3. Put the path the script prints into the answer as a link.
+
+- **Loadout:** before rendering, give every item that isn't in place a `"note"` saying how to get it ("Stage 3: Ardougne Medium diary", "GE ~230 gp"). Notes show on hover and in the card's "Getting the loadout" list. Use exact wiki item names: icons are looked up by name, and anything without an icon appears as plain text on the card.
 - **Route:** add a `"route"` list with one leg per route step (`card.py --help` shows the format). Take each leg's `"arrive"` point from `transport.py find "<teleport>"`, and its `"target"` from `wiki.py coords "<page>"`. When the pin shows a `mapid` (dungeons and other underground areas), copy it into the leg as `"mapid"`. Never estimate coordinates: when a destination has none, leave out `"target"` and the leg appears as text only. Mark legs the account can't use yet with `"locked": "<stage>"`.
 
 ## Blind spots
