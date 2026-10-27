@@ -18,7 +18,7 @@ Open a new terminal after installing, so it finds the new commands.
 ## 2. Get the project (once)
 
 ```
-git clone <the repo link you were given> osrs-agent
+git clone https://github.com/Rakvadium/osrs-agent.git
 cd osrs-agent
 ```
 
