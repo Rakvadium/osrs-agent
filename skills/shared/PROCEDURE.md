@@ -140,7 +140,7 @@ All classes end with `## Verify in-game`, covering the blind spots below and any
 **Plan card.** Whenever the answer includes a loadout or a route, render it as an image card. Run `card.py <plan file> --rsn NAME --title "<activity>"` on the same plan JSON you checked in step 5. Put the path the script prints into the answer as a link.
 
 - **Loadout:** before rendering, give every item that isn't in place a `"note"` saying how to get it ("Stage 3: Ardougne Medium diary", "GE ~230 gp"); the note shows on hover. Use exact wiki item names: icons are looked up by name, and anything without an icon appears as plain text on the card.
-- **Route:** add a `"route"` list with one leg per route step (`card.py --help` shows the format). Take each leg's `"arrive"` point from `transport.py find "<teleport>"`, and its `"target"` from `wiki.py coords "<page>"`. Never estimate coordinates. Mark legs the account can't use yet with `"locked": "<stage>"`.
+- **Route:** add a `"route"` list with one leg per route step (`card.py --help` shows the format). Take each leg's `"arrive"` point from `transport.py find "<teleport>"`, and its `"target"` from `wiki.py coords "<page>"`. When the pin shows a `mapid` (dungeons and other underground areas), copy it into the leg as `"mapid"`. Never estimate coordinates: when a destination has none, leave out `"target"` and the leg appears as text only. Mark legs the account can't use yet with `"locked": "<stage>"`.
 
 ## Blind spots
 

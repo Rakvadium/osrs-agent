@@ -485,7 +485,7 @@ def cmd_coords(args):
     if not points:
         print("none (try another page or --section)")
     for p in points:
-        print("- {} {} {}{}  {}".format(p["x"], p["y"], p["plane"], "" if p["mapid"] == 0 else " (map {})".format(p["mapid"]), p["context"]))
+        print("- {} {} {}{}  {}".format(p["x"], p["y"], p["plane"], "" if p["mapid"] == 0 else "  mapid {}".format(p["mapid"]), p["context"]))
 
 
 def wiki_norm(name):

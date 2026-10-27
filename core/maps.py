@@ -170,12 +170,38 @@ def squares(a, b):
     return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
 
 
+UNDERGROUND_Y = 6400
+
+
+def mapid(leg):
+    """The wiki map a leg is drawn on: as given (wiki.py coords prints it), else
+    the dungeon map (-1) for underground coordinates, else the surface (0)."""
+    if "mapid" in leg:
+        return leg["mapid"]
+    return -1 if leg["target"][1] >= UNDERGROUND_Y else 0
+
+
+def plane_of(p):
+    return p[2] if len(p) > 2 else 0
+
+
+def text_leg_html(i, leg, reason):
+    lock = '<span class="lock">{}</span>'.format(html.escape(leg["locked"])) if leg.get("locked") else ""
+    return ('<div class="leg"><div class="head"><b>{i}. {title}</b>{lock}<br><span class="how">{method}</span> · '
+            '<span class="note">{reason}{note}</span></div></div>').format(
+        i=i, title=html.escape(leg["title"]), lock=lock, method=html.escape(leg.get("method", "")),
+        reason=html.escape(reason), note=" · " + html.escape(leg["note"]) if leg.get("note") else "")
+
+
 def leg_html(i, leg, width=340, height=230):
+    if not leg.get("target"):
+        return text_leg_html(i, leg, "no map: destination coordinates unknown")
     target, arrive = leg["target"], leg.get("arrive") or leg["target"]
-    plane = target[2] if len(target) > 2 else 0
+    plane = plane_of(target)
+    floor_change = plane_of(arrive) != plane
     dist = squares(arrive, target)
     path = None
-    if dist >= 3:
+    if dist >= 3 and not floor_change:
         try:
             path = pathfind.find_path(tuple(arrive[:2]) + (plane,), tuple(target[:2]) + (plane,))
         except OSError:
@@ -183,7 +209,7 @@ def leg_html(i, leg, width=340, height=230):
     framed = (path or []) + [arrive, target]
     xs, ys = [p[0] for p in framed], [p[1] for p in framed]
     zoom = fit_zoom(framed, width, height)
-    view = View((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, zoom, width, height, plane, leg.get("mapid", 0))
+    view = View((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, zoom, width, height, plane, mapid(leg))
     # Put each label on the far side from the other marker: beside them on
     # north-south legs, above/below on east-west legs, so labels clear the arrow.
     if abs(arrive[0] - target[0]) > abs(arrive[1] - target[1]):
@@ -200,7 +226,9 @@ def leg_html(i, leg, width=340, height=230):
         body += marker_svg(view, arrive, leg.get("arrive_label", "Arrive"), "#6ec6ff", anchor=arrive_side)
     body += marker_svg(view, target, leg.get("target_label", leg["title"]), "#ffd23f", number=i, anchor=target_side)
     lock = '<span class="lock">{}</span>'.format(html.escape(leg["locked"])) if leg.get("locked") else ""
-    if dist < 3:
+    if floor_change:
+        run = "changes floor (stairs or ladder); arrow shows direction only, drawn on the destination floor"
+    elif dist < 3:
         run = "lands on the spot"
     elif path:
         steps = len(path) - 1
@@ -228,7 +256,12 @@ class ScaledView:
 
 
 def overview_html(legs, width=700, max_height=420, margin=40):
-    points = [leg["target"] for leg in legs]
+    """Numbers every surface destination on one map. `legs` is [(number, leg)];
+    underground legs are left to their own maps."""
+    legs = [(i, leg) for i, leg in legs if leg.get("target") and mapid(leg) == 0]
+    if not legs:
+        return ""
+    points = [leg["target"] for _, leg in legs]
     xs, ys = [p[0] for p in points], [p[1] for p in points]
     cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
     zoom = fit_zoom(points, width, max_height, margin_squares=margin, max_zoom=1)
@@ -240,7 +273,7 @@ def overview_html(legs, width=700, max_height=420, margin=40):
     view = View(cx, cy, zoom, natural_w, natural_h)
     marks = ScaledView(view, scale)
     body = "".join(marker_svg(marks, leg["target"], leg.get("short", leg["title"]), "#ffd23f", number=i)
-                   for i, leg in enumerate(legs, 1))
+                   for i, leg in legs)
     return ('<div class="overview"><div class="map" style="width:{w:.0f}px;height:{h:.0f}px">'
             '<div style="position:absolute;left:0;top:0;width:{nw:.0f}px;height:{nh:.0f}px;transform:scale({sc:.4f});transform-origin:0 0">{tiles}</div>'
             '{svg}</div></div>').format(w=marks.w, h=marks.h, nw=natural_w, nh=natural_h, sc=scale,
@@ -249,4 +282,4 @@ def overview_html(legs, width=700, max_height=420, margin=40):
 
 def route_html(legs, title="Route"):
     return '<div class="route"><h2 class="title">{}</h2>{}<div class="legs" style="margin-top:16px">{}</div></div>'.format(
-        html.escape(title), overview_html(legs), "".join(leg_html(i, leg) for i, leg in enumerate(legs, 1)))
+        html.escape(title), overview_html(list(enumerate(legs, 1))), "".join(leg_html(i, leg) for i, leg in enumerate(legs, 1)))

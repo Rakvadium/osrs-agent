@@ -12,7 +12,10 @@ An optional "route" adds an overview map and one map per leg:
              "arrive": [2665, 3374, 0], "target": [2667, 3375, 0],
              "note": "patch is right there", "locked": "Stage 3", "short": "Ardougne"}]
 "arrive" is where the method lands (transport.py find), "target" is the
-destination (wiki.py coords). "locked" marks a leg the account can't use yet.
+destination (wiki.py coords). Optional: "locked" marks a leg the account
+can't use yet; "mapid" picks the wiki map for underground legs (wiki.py
+coords prints it; defaults to the dungeon map for y >= 6400). A leg without
+"target" is listed as text only.
 
 Each item is drawn by status against the snapshot: owned and in place, in the
 bank ("bank" badge), or missing (greyed out). The output is one self-contained
