@@ -1,14 +1,16 @@
-"""Route maps built from the OSRS Wiki's map tiles, with markers, labels and arrows.
+"""Route maps built from the OSRS Wiki's map tiles, with markers, labels and walking paths.
 
 Used by card.py for plans with a "route". Each leg is drawn on its own map:
-where the teleport lands, where you're going, and an arrow between them.
-An overview map numbers every leg's destination.
+where the teleport lands, where you're going, and the walking path between
+them (pathfind.py over the game's collision map). When no walking path is
+found (stairs, a transport, an unmapped area), a straight dashed arrow shows
+the direction instead, and the leg says so. An overview map numbers every
+leg's destination.
 
 Tiles: https://maps.runescape.wiki/osrs/versions/<version>/tiles/rendered/<mapid>/<zoom>/<plane>_<x>_<y>.png
 are 256 px, at 2**zoom px per game square (zoom -1..3), so tile (tx, ty)
 covers game squares x in [tx*S, (tx+1)*S) and y in [ty*S, (ty+1)*S),
-S = 256 / 2**zoom, with north at the top. Arrows are straight lines; they show
-direction and distance, not the walking path.
+S = 256 / 2**zoom, with north at the top.
 """
 import base64
 import html
@@ -17,6 +19,7 @@ import re
 import urllib.error
 import urllib.request
 
+import pathfind
 import wiki
 
 TILE_ROOT = "https://maps.runescape.wiki/osrs/versions/{version}/tiles/rendered/{mapid}/{zoom}/{plane}_{x}_{y}.png"
@@ -127,6 +130,14 @@ def arrow_svg(view, a, b, color="#ffd23f"):
             'stroke-linecap="round" marker-end="url(#head)"/>').format(x1, y1, x2s, y2s, x1, y1, x2s, y2s, color)
 
 
+def path_svg(view, points, color="#ffd23f"):
+    """A walking path through `points` (game squares), with an arrowhead at the end."""
+    pts = " ".join("{:.1f},{:.1f}".format(*view.px(*p[:2])) for p in points)
+    return ('<polyline points="{p}" fill="none" stroke="#000" stroke-width="6" stroke-linejoin="round" stroke-linecap="round" opacity=".55"/>'
+            '<polyline points="{p}" fill="none" stroke="{c}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" '
+            'marker-end="url(#head)"/>').format(p=pts, c=color)
+
+
 def marker_svg(view, p, label, color, number=None, anchor="start"):
     """A marker with its label beside it ("start"/"end") or centred above/below it ("above"/"below")."""
     x, y = view.px(*p[:2])
@@ -162,9 +173,17 @@ def squares(a, b):
 def leg_html(i, leg, width=340, height=230):
     target, arrive = leg["target"], leg.get("arrive") or leg["target"]
     plane = target[2] if len(target) > 2 else 0
-    zoom = fit_zoom([arrive, target], width, height)
-    view = View((arrive[0] + target[0]) / 2, (arrive[1] + target[1]) / 2, zoom, width, height, plane, leg.get("mapid", 0))
     dist = squares(arrive, target)
+    path = None
+    if dist >= 3:
+        try:
+            path = pathfind.find_path(tuple(arrive[:2]) + (plane,), tuple(target[:2]) + (plane,))
+        except OSError:
+            path = None
+    framed = (path or []) + [arrive, target]
+    xs, ys = [p[0] for p in framed], [p[1] for p in framed]
+    zoom = fit_zoom(framed, width, height)
+    view = View((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, zoom, width, height, plane, leg.get("mapid", 0))
     # Put each label on the far side from the other marker: beside them on
     # north-south legs, above/below on east-west legs, so labels clear the arrow.
     if abs(arrive[0] - target[0]) > abs(arrive[1] - target[1]):
@@ -173,12 +192,21 @@ def leg_html(i, leg, width=340, height=230):
         arrive_side = "end" if arrive[0] > target[0] else "start"
         target_side = "start" if arrive_side == "end" else "end"
     body = ""
-    if dist >= 3:
+    if path:
+        body += path_svg(view, pathfind.simplify(path))
+    elif dist >= 3:
         body += arrow_svg(view, arrive, target)
+    if dist >= 3:
         body += marker_svg(view, arrive, leg.get("arrive_label", "Arrive"), "#6ec6ff", anchor=arrive_side)
     body += marker_svg(view, target, leg.get("target_label", leg["title"]), "#ffd23f", number=i, anchor=target_side)
     lock = '<span class="lock">{}</span>'.format(html.escape(leg["locked"])) if leg.get("locked") else ""
-    run = "lands on the spot" if dist < 3 else "~{} squares to run".format(dist)
+    if dist < 3:
+        run = "lands on the spot"
+    elif path:
+        steps = len(path) - 1
+        run = "{} steps, ~{:.0f}s running".format(steps, -(-steps // 2) * 0.6)
+    else:
+        run = "~{} squares, straight line (no walking path found)".format(dist)
     return ('<div class="leg"><div class="head"><b>{i}. {title}</b>{lock}<br><span class="how">{method}</span> · '
             '<span class="note">{run}{note}</span></div>'
             '<div class="map" style="width:{w}px;height:{h}px">{tiles}{svg}</div></div>').format(

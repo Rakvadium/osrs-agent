@@ -157,7 +157,7 @@ def render(plan, snap, title):
 </div>
 <div class="legend"><span class="l-own">in place</span><span class="l-equip">owned, equip it</span><span class="l-bank">in bank, withdraw</span><span class="l-miss">not owned (hover for how to get it)</span></div>
 {route}
-<div class="credits">Icons and map tiles: OSRS Wiki. Transport data: Shortest Path plugin (BSD-2). Arrows are straight lines, not walking paths.</div>
+<div class="credits">Icons and map tiles: OSRS Wiki. Transport data: Shortest Path plugin (BSD-2). Paths: walking routes over the game collision map; dashed straight arrows mark legs with no walking path.</div>
 </body></html>""".format(title=html.escape(title), css=CSS + maps.CSS, rsn=html.escape(snap.get("rsn", "?")),
                          type=snap.get("accountType"), age=check.age(snap.get("capturedAt")), slots=slots,
                          equip="".join(equip), inv="".join(inv), route=route)

@@ -41,7 +41,16 @@ Renders the plan's loadout as an in-game-style card: the equipment screen and a 
 
 `wiki.py icon "<item>" [--qty N]` downloads one icon and prints its cached path.
 
-**Route maps:** with a `"route"` in the plan (`python card.py --help` shows the format), the card adds an overview map numbering every destination, plus one map per leg. Each leg map shows where the teleport lands, the destination, and a dashed arrow with the run distance in squares. Each map zooms to fit its leg. Tiles come from the wiki's map (`maps.runescape.wiki`) and are cached under `~/.cache/osrs-agent/wiki/tiles/`. Arrows are straight lines that show direction, not the walking path around walls.
+**Route maps:** with a `"route"` in the plan (`python card.py --help` shows the format), the card adds an overview map numbering every destination, plus one map per leg. Each leg map shows where the teleport lands, the destination, and the **walking path** between them, with its step count and running time. Each map zooms to fit its path. Tiles come from the wiki's map (`maps.runescape.wiki`) and are cached under `~/.cache/osrs-agent/wiki/tiles/`. A leg with no walking path (it needs stairs or a transport, or crosses unmapped ground) falls back to a dashed straight arrow and says so.
+
+## `pathfind.py`: walking paths
+
+```
+python pathfind.py 1585 3053 1586 3099      # x1 y1 x2 y2 [--plane 0]
+# 56 steps (~17s running) ... turns: 1585 3053 -> 1587 3053 -> ...
+```
+
+Shortest walking path over the game's collision map. Moves go in 8 directions, and a diagonal step is allowed only when both straight steps around it are open, as in game. Doors and gates without requirements count as passable. A destination that's an object (a patch, a tree) snaps to the nearest square you can stand on. Paths stay on one plane: stairs, ladders, agility shortcuts and teleports belong in the plan's legs. The collision map and door data come from the [Shortest Path](https://github.com/Skretzo/shortest-path) plugin (BSD-2-Clause), cached for 30 days.
 
 ## `check.py`: compare requirements against your snapshot
 

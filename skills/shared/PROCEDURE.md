@@ -9,6 +9,7 @@ Scripts live in this skill's `scripts/` folder. Run them with `python` (or `pyth
 - `card.py <plan file>`: renders a plan as an in-game-style card: equipment, inventory, and route maps (HTML).
 - `transport.py find <teleport | fairy ring code | transport>`: where a teleport lands (game coordinates) and what it requires.
 - `wiki.py coords <page> [--section]`: game coordinates of the map pins on a wiki page (patches, shops, fishing spots, ...).
+- `pathfind.py x1 y1 x2 y2`: walking path, step count and running time between two squares. card.py draws these on route maps by itself; use it directly when the answer quotes a walking distance.
 
 ## 1. Read the ask
 
