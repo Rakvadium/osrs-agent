@@ -39,3 +39,7 @@ The skill follows a fixed procedure. It loads the snapshot, breaks the request i
 - **Missed requirement:** add the gate to [`skills/shared/GATES.md`](skills/shared/GATES.md). It lists what to look up, not the facts themselves.
 - **Planning process:** change [`skills/shared/PROCEDURE.md`](skills/shared/PROCEDURE.md).
 - **Account-type rules:** change the `SKILL.md` for that account type.
+
+## License
+
+[MIT](LICENSE). Data fetched at runtime keeps its own terms: OSRS Wiki content (item data, icons, map tiles) is from the [OSRS Wiki](https://oldschool.runescape.wiki), and the transport tables and collision map come from the [Shortest Path](https://github.com/Skretzo/shortest-path) plugin (BSD-2-Clause). Old School RuneScape is a trademark of Jagex Ltd; this project isn't affiliated with Jagex or RuneLite.
