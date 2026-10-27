@@ -1,0 +1,224 @@
+"""Route maps built from the OSRS Wiki's map tiles, with markers, labels and arrows.
+
+Used by card.py for plans with a "route". Each leg is drawn on its own map:
+where the teleport lands, where you're going, and an arrow between them.
+An overview map numbers every leg's destination.
+
+Tiles: https://maps.runescape.wiki/osrs/versions/<version>/tiles/rendered/<mapid>/<zoom>/<plane>_<x>_<y>.png
+are 256 px, at 2**zoom px per game square (zoom -1..3), so tile (tx, ty)
+covers game squares x in [tx*S, (tx+1)*S) and y in [ty*S, (ty+1)*S),
+S = 256 / 2**zoom, with north at the top. Arrows are straight lines; they show
+direction and distance, not the walking path.
+"""
+import base64
+import html
+import math
+import re
+import urllib.error
+import urllib.request
+
+import wiki
+
+TILE_ROOT = "https://maps.runescape.wiki/osrs/versions/{version}/tiles/rendered/{mapid}/{zoom}/{plane}_{x}_{y}.png"
+TILE_DIR = wiki.CACHE_DIR / "tiles"
+DAY = 24 * 3600
+
+CSS = """
+.route { margin-top:26px; }
+.route h2.title { font-size:15px; color:#ff981f; text-transform:uppercase; letter-spacing:.08em; margin:0 0 10px; }
+.legs { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:16px; }
+.leg { background:#3e3529; border:3px solid #5a4d3c; border-radius:6px; overflow:hidden; }
+.leg .head { padding:8px 10px 6px; }
+.leg .head b { color:#ff981f; } .leg .head .how { color:#e8dcc0; } .leg .head .note { color:#b8a888; font-size:12px; }
+.leg .lock { display:inline-block; font-size:10px; font-weight:bold; background:#7a2e2e; color:#fff; border-radius:3px; padding:0 5px; margin-left:6px; vertical-align:1px; }
+.map { position:relative; overflow:hidden; background:#0e2a3a; }
+.map img.tile { position:absolute; width:256px; height:256px; image-rendering:pixelated; }
+.map svg { position:absolute; left:0; top:0; }
+.map text { font:bold 12px system-ui, sans-serif; paint-order:stroke; stroke:#000; stroke-width:3px; }
+.overview .map { border:3px solid #5a4d3c; border-radius:6px; }
+"""
+
+_version = None
+EMBED = True
+
+
+def map_version():
+    """The wiki's current map tile version, read from any page with a map."""
+    global _version
+    if _version is None:
+        data = wiki.fetch_json(wiki.API, {"action": "parse", "page": "Allotment patch/Patches", "prop": "text", "format": "json"}, ttl=DAY)
+        m = re.search(r"maps\.runescape\.wiki/osrs/versions/([^/]+)/tiles", data["parse"]["text"]["*"])
+        if not m:
+            raise wiki.WikiError("Could not find the wiki's map version")
+        _version = m.group(1)
+    return _version
+
+
+def tile_src(mapid, zoom, plane, tx, ty):
+    """Cached tile as an <img> src (data URI or file path), or None for empty ocean/void."""
+    version = map_version()
+    path = TILE_DIR / version / str(mapid) / str(zoom) / "{}_{}_{}.png".format(plane, tx, ty)
+    missing = path.with_suffix(".none")
+    if missing.exists():
+        return None
+    if not path.exists():
+        url = TILE_ROOT.format(version=version, mapid=mapid, zoom=zoom, plane=plane, x=tx, y=ty)
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": wiki.USER_AGENT})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = resp.read()
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                missing.parent.mkdir(parents=True, exist_ok=True)
+                missing.touch()
+                return None
+            raise
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    if EMBED:
+        return "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode()
+    return path.as_posix()
+
+
+class View:
+    """A W x H pixel window onto the map, centred on a game coordinate."""
+
+    def __init__(self, cx, cy, zoom, width, height, plane=0, mapid=0):
+        self.s = 2 ** zoom
+        self.zoom, self.w, self.h, self.plane, self.mapid = zoom, width, height, plane, mapid
+        self.x0 = cx * self.s - width / 2
+        self.y0 = -cy * self.s - height / 2
+
+    def px(self, x, y):
+        """Pixel centre of game square (x, y) in the view."""
+        return x * self.s - self.x0 + self.s / 2, -y * self.s - self.y0 - self.s / 2
+
+    def tiles_html(self):
+        out = []
+        for tx in range(math.floor(self.x0 / 256), math.floor((self.x0 + self.w) / 256) + 1):
+            for ty in range(math.floor(-(self.y0 + self.h) / 256), math.floor(-self.y0 / 256) + 1):
+                src = tile_src(self.mapid, self.zoom, self.plane, tx, ty)
+                if src:
+                    out.append('<img class="tile" src="{}" style="left:{:.0f}px;top:{:.0f}px" alt="">'.format(
+                        src, tx * 256 - self.x0, -(ty + 1) * 256 - self.y0))
+        return "".join(out)
+
+
+def fit_zoom(points, width, height, margin_squares=10, max_zoom=3):
+    """Highest zoom at which every point fits in the window with a margin."""
+    xs, ys = [p[0] for p in points], [p[1] for p in points]
+    span_x, span_y = max(xs) - min(xs) + 2 * margin_squares, max(ys) - min(ys) + 2 * margin_squares
+    for zoom in range(max_zoom, -2, -1):
+        if span_x * 2 ** zoom <= width and span_y * 2 ** zoom <= height:
+            return zoom
+    return -1
+
+
+def arrow_svg(view, a, b, color="#ffd23f"):
+    (x1, y1), (x2, y2) = view.px(*a[:2]), view.px(*b[:2])
+    length = math.hypot(x2 - x1, y2 - y1)
+    if length < 14:
+        return ""
+    # Stop short of the target marker so the head stays visible.
+    k = (length - 11) / length
+    x2s, y2s = x1 + (x2 - x1) * k, y1 + (y2 - y1) * k
+    return ('<line x1="{:.1f}" y1="{:.1f}" x2="{:.1f}" y2="{:.1f}" stroke="#000" stroke-width="6" stroke-linecap="round" opacity=".55"/>'
+            '<line x1="{:.1f}" y1="{:.1f}" x2="{:.1f}" y2="{:.1f}" stroke="{}" stroke-width="3" stroke-dasharray="7 5" '
+            'stroke-linecap="round" marker-end="url(#head)"/>').format(x1, y1, x2s, y2s, x1, y1, x2s, y2s, color)
+
+
+def marker_svg(view, p, label, color, number=None, anchor="start"):
+    """A marker with its label beside it ("start"/"end") or centred above/below it ("above"/"below")."""
+    x, y = view.px(*p[:2])
+    width = 12 + 7 * len(label)  # ~7 px per character
+    if anchor in ("above", "below"):
+        if (anchor == "above" and y < 24) or (anchor == "below" and y > view.h - 24):
+            anchor = "below" if anchor == "above" else "above"
+        tx, ty, text_anchor = min(max(x, width / 2), view.w - width / 2), (y - 14 if anchor == "above" else y + 22), "middle"
+    else:
+        # Flip the label to the other side when it would run off the map.
+        if anchor == "start" and x + width > view.w:
+            anchor = "end"
+        elif anchor == "end" and x - width < 0:
+            anchor = "start"
+        tx, ty, text_anchor = (x + 12 if anchor == "start" else x - 12), y + 4, anchor
+    num = '<text x="{:.1f}" y="{:.1f}" text-anchor="middle" fill="#000" style="stroke:none;font-size:11px">{}</text>'.format(x, y + 4, number) if number is not None else ""
+    return ('<circle cx="{:.1f}" cy="{:.1f}" r="8" fill="{}" stroke="#000" stroke-width="2"/>{}'
+            '<text x="{:.1f}" y="{:.1f}" text-anchor="{}" fill="{}">{}</text>').format(
+        x, y, color, num, tx, ty, text_anchor, color, html.escape(label))
+
+
+def svg(view, body):
+    return ('<svg width="{w:.0f}" height="{h:.0f}" viewBox="0 0 {w:.0f} {h:.0f}">'
+            '<defs><marker id="head" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">'
+            '<path d="M0,0 L10,5 L0,10 z" fill="#ffd23f" stroke="#000" stroke-width="1"/></marker></defs>{b}</svg>').format(w=view.w, h=view.h, b=body)
+
+
+def squares(a, b):
+    """Run distance in game squares (diagonal steps count as one)."""
+    return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
+
+
+def leg_html(i, leg, width=340, height=230):
+    target, arrive = leg["target"], leg.get("arrive") or leg["target"]
+    plane = target[2] if len(target) > 2 else 0
+    zoom = fit_zoom([arrive, target], width, height)
+    view = View((arrive[0] + target[0]) / 2, (arrive[1] + target[1]) / 2, zoom, width, height, plane, leg.get("mapid", 0))
+    dist = squares(arrive, target)
+    # Put each label on the far side from the other marker: beside them on
+    # north-south legs, above/below on east-west legs, so labels clear the arrow.
+    if abs(arrive[0] - target[0]) > abs(arrive[1] - target[1]):
+        arrive_side, target_side = ("above", "below") if arrive[1] > target[1] else ("below", "above")
+    else:
+        arrive_side = "end" if arrive[0] > target[0] else "start"
+        target_side = "start" if arrive_side == "end" else "end"
+    body = ""
+    if dist >= 3:
+        body += arrow_svg(view, arrive, target)
+        body += marker_svg(view, arrive, leg.get("arrive_label", "Arrive"), "#6ec6ff", anchor=arrive_side)
+    body += marker_svg(view, target, leg.get("target_label", leg["title"]), "#ffd23f", number=i, anchor=target_side)
+    lock = '<span class="lock">{}</span>'.format(html.escape(leg["locked"])) if leg.get("locked") else ""
+    run = "lands on the spot" if dist < 3 else "~{} squares to run".format(dist)
+    return ('<div class="leg"><div class="head"><b>{i}. {title}</b>{lock}<br><span class="how">{method}</span> · '
+            '<span class="note">{run}{note}</span></div>'
+            '<div class="map" style="width:{w}px;height:{h}px">{tiles}{svg}</div></div>').format(
+        i=i, title=html.escape(leg["title"]), lock=lock, method=html.escape(leg.get("method", "")), run=run,
+        note=" · " + html.escape(leg["note"]) if leg.get("note") else "", w=width, h=height,
+        tiles=view.tiles_html(), svg=svg(view, body))
+
+
+class ScaledView:
+    """Marker coordinates for a View that's drawn shrunk by `scale` (labels stay full size)."""
+
+    def __init__(self, view, scale):
+        self.view, self.scale = view, scale
+        self.w, self.h = view.w * scale, view.h * scale
+
+    def px(self, x, y):
+        px, py = self.view.px(x, y)
+        return px * self.scale, py * self.scale
+
+
+def overview_html(legs, width=700, max_height=420, margin=40):
+    points = [leg["target"] for leg in legs]
+    xs, ys = [p[0] for p in points], [p[1] for p in points]
+    cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+    zoom = fit_zoom(points, width, max_height, margin_squares=margin, max_zoom=1)
+    s = 2 ** zoom
+    # When even the widest zoom is too big, draw at that zoom and shrink the tiles.
+    natural_w = max(width, (max(xs) - min(xs) + 2 * margin) * s)
+    natural_h = max(200, (max(ys) - min(ys) + 2 * margin) * s)
+    scale = min(1.0, width / natural_w, max_height / natural_h)
+    view = View(cx, cy, zoom, natural_w, natural_h)
+    marks = ScaledView(view, scale)
+    body = "".join(marker_svg(marks, leg["target"], leg.get("short", leg["title"]), "#ffd23f", number=i)
+                   for i, leg in enumerate(legs, 1))
+    return ('<div class="overview"><div class="map" style="width:{w:.0f}px;height:{h:.0f}px">'
+            '<div style="position:absolute;left:0;top:0;width:{nw:.0f}px;height:{nh:.0f}px;transform:scale({sc:.4f});transform-origin:0 0">{tiles}</div>'
+            '{svg}</div></div>').format(w=marks.w, h=marks.h, nw=natural_w, nh=natural_h, sc=scale,
+                                         tiles=view.tiles_html(), svg=svg(marks, body))
+
+
+def route_html(legs, title="Route"):
+    return '<div class="route"><h2 class="title">{}</h2>{}<div class="legs" style="margin-top:16px">{}</div></div>'.format(
+        html.escape(title), overview_html(legs), "".join(leg_html(i, leg) for i, leg in enumerate(legs, 1)))

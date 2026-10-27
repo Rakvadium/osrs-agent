@@ -10,7 +10,7 @@ RuneLite + plugin ──writes──▶ snapshot .json ◀──reads── /rs-
 | Folder | What it is |
 |---|---|
 | [`plugin/`](plugin/README.md) | RuneLite plugin that exports your levels, quests, diaries, inventory, equipment and bank |
-| [`core/`](core/README.md) | `wiki.py` (wiki lookups and item icons), `check.py` (requirement and loadout checks against the snapshot), and `card.py` (in-game-style loadout image cards) |
+| [`core/`](core/README.md) | `wiki.py` (wiki lookups, item icons, map coordinates), `transport.py` (where teleports land), `check.py` (requirement and loadout checks against the snapshot), `card.py` + `maps.py` (in-game-style loadout and route map cards) |
 | `skills/` | The `/rs-regular`, `/rs-ironman` and `/rs-g-ironman` skills, plus the shared `PROCEDURE.md` and `GATES.md` |
 | `install.py` | Copies the skills into Claude Code and/or Kiro |
 

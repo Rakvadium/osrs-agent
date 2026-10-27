@@ -43,6 +43,18 @@ def fetch_json(url, params, ttl=WEEK):
     return data
 
 
+def fetch_text(url, path, ttl=WEEK):
+    """Downloads `url` to the cache file `path` (refreshed after `ttl` seconds); returns its text."""
+    if not refresh and path.exists() and time.time() - path.stat().st_mtime < ttl:
+        return path.read_text(encoding="utf-8")
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        text = resp.read().decode("utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return text
+
+
 def api(**params):
     return fetch_json(API, {"format": "json", **params})
 
@@ -350,22 +362,23 @@ def rarity_value(rarity):
     return 0
 
 
+def section_params(title, section):
+    """Parse-API params ({"page", "section"}) selecting a section by heading (fuzzy)."""
+    sections = api(action="parse", page=title, prop="sections", redirects=1).get("parse", {}).get("sections", [])
+    match = next((s for s in sections if s["line"].lower() == section.lower()), None) \
+        or next((s for s in sections if section.lower() in s["line"].lower()), None)
+    if not match:
+        names = ", ".join(s["line"] for s in sections)
+        raise WikiError("No section {!r} on {!r}. Sections: {}".format(section, title, names))
+    # Transcluded sections ("T-2") live on another page; fetch them from there.
+    if match["index"].startswith("T-"):
+        return {"page": match["fromtitle"].replace("_", " "), "section": match["index"][2:]}
+    return {"page": title, "section": match["index"]}
+
+
 def page_text(title, section, max_chars):
     params = {"action": "parse", "page": title, "prop": "text", "disablelimitreport": 1, "redirects": 1}
-    if section is None:
-        params["section"] = 0
-    else:
-        sections = api(action="parse", page=title, prop="sections", redirects=1).get("parse", {}).get("sections", [])
-        match = next((s for s in sections if s["line"].lower() == section.lower()), None) \
-            or next((s for s in sections if section.lower() in s["line"].lower()), None)
-        if not match:
-            names = ", ".join(s["line"] for s in sections)
-            raise WikiError("No section {!r} on {!r}. Sections: {}".format(section, title, names))
-        params["section"] = match["index"]
-        # Transcluded sections ("T-2") live on another page; fetch them from there.
-        if match["index"].startswith("T-"):
-            params["page"] = match["fromtitle"].replace("_", " ")
-            params["section"] = match["index"][2:]
+    params.update({"section": 0} if section is None else section_params(title, section))
     data = api(**params)
     if "error" in data:
         raise WikiError(data["error"].get("info", "parse failed"))
@@ -437,6 +450,44 @@ def icon_file(name, quantity=1):
     return path
 
 
+MAP_RE = re.compile(r'<a[^>]*mw-kartographer-map[^>]*>')
+
+
+def map_points(title, section=None):
+    """Map pins embedded in a page (or one section): [{"x", "y", "plane", "mapid", "context"}].
+
+    `context` is the text of the table row or paragraph the map sits in, so
+    pins on list pages (one map per patch, shop, ...) can be told apart.
+    """
+    params = {"action": "parse", "page": title, "prop": "text", "disablelimitreport": 1, "redirects": 1}
+    if section is not None:
+        params.update(section_params(title, section))
+    data = api(**params)
+    if "error" in data:
+        raise WikiError(data["error"].get("info", "parse failed"))
+    html = data["parse"]["text"]["*"]
+    points = []
+    for chunk in re.split(r"<tr[ >]|<p>", html):
+        for m in MAP_RE.finditer(chunk):
+            attrs = dict(re.findall(r'data-([a-z]+)="([^"]*)"', m.group(0)))
+            if "lat" not in attrs or "lon" not in attrs:
+                continue
+            context = re.sub(r"\s+", " ", html_to_text(MAP_RE.sub("", chunk.split("<a class=\"mw-kartographer")[0]))).strip(" |-")
+            points.append({"x": int(float(attrs["lon"])), "y": int(float(attrs["lat"])), "plane": int(attrs.get("plane", 0)),
+                           "mapid": int(attrs.get("mapid", 0)), "context": context[:120]})
+    return points
+
+
+def cmd_coords(args):
+    title = resolve_title(args.name)
+    points = map_points(title, args.section)
+    print("# Map pins on {}{}".format(title, " > " + args.section if args.section else ""))
+    if not points:
+        print("none (try another page or --section)")
+    for p in points:
+        print("- {} {} {}{}  {}".format(p["x"], p["y"], p["plane"], "" if p["mapid"] == 0 else " (map {})".format(p["mapid"]), p["context"]))
+
+
 def wiki_norm(name):
     return re.sub(r"[^a-z0-9]", "", name.lower())
 
@@ -476,6 +527,8 @@ def main(argv=None):
     p.add_argument("--sections", action="store_true", help="list section headings")
     p.add_argument("--max-chars", type=int, default=4000)
     add("price", cmd_price, "current Grand Exchange price")
+    p = add("coords", cmd_coords, "game coordinates of the map pins on a page (patches, shops, spots, ...)")
+    p.add_argument("--section", help="section heading (fuzzy)")
     p = add("icon", cmd_icon, "download an item's inventory icon; prints the file path")
     p.add_argument("--qty", type=int, default=1, help="stack size, picks the matching stack icon")
     p = add("search", cmd_search, "find page titles")

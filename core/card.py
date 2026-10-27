@@ -1,4 +1,4 @@
-"""Renders a plan's loadout as an in-game-style inventory and equipment card (HTML).
+"""Renders a plan as an in-game-style card: equipment, inventory and route maps (HTML).
 
 Usage:
   python card.py plan.json --rsn NAME [--title "Optimal herb run"] [--out file.html]
@@ -6,6 +6,13 @@ Usage:
 Reads the same plan JSON as `check.py plan`. Items may carry an optional
 "note" (shown on hover), e.g. {"item": "Ectophial", "note": "Stage 3: Ghosts Ahoy"};
 equipment entries may be a name or {"item": ..., "note": ...}.
+
+An optional "route" adds an overview map and one map per leg:
+  "route": [{"title": "Ardougne herb patch", "method": "Ardougne cloak teleport",
+             "arrive": [2665, 3374, 0], "target": [2667, 3375, 0],
+             "note": "patch is right there", "locked": "Stage 3", "short": "Ardougne"}]
+"arrive" is where the method lands (transport.py find), "target" is the
+destination (wiki.py coords). "locked" marks a leg the account can't use yet.
 
 Each item is drawn by status against the snapshot: owned and in place, in the
 bank ("bank" badge), or missing (greyed out). The output is one self-contained
@@ -20,6 +27,7 @@ import sys
 from pathlib import Path
 
 import check
+import maps
 import wiki
 
 # Equipment screen layout as in game: (row, column) per wiki equipment slot.
@@ -56,6 +64,7 @@ h1 { font-size:20px; margin:0 0 4px; } .sub { color:#b8a888; margin-bottom:18px;
 .l-own::before { background:#e8dcc0; } .l-bank::before { background:#2a62c9; }
 .l-equip::before { background:#2a8c4a; } .l-miss::before { border:1px dashed #a33; }
 .over { color:#ff5050; font-weight:bold; }
+.credits { margin-top:18px; color:#7d705a; font-size:11px; }
 """
 
 
@@ -138,6 +147,7 @@ def render(plan, snap, title):
     inv.extend('<div class="slot"></div>' for _ in range(max(0, 28 - used)))
 
     slots = '<span class="{}">{}/28 slots</span>'.format("over" if used > 28 else "", used)
+    route = maps.route_html(plan["route"]) if plan.get("route") else ""
     return """<!doctype html><html><head><meta charset="utf-8"><title>{title}</title><style>{css}</style></head><body>
 <h1>{title}</h1>
 <div class="sub">{rsn} ({type}) · snapshot {age} · {slots}</div>
@@ -146,9 +156,11 @@ def render(plan, snap, title):
 <div class="panel"><h2>Inventory</h2><div class="inv">{inv}</div></div>
 </div>
 <div class="legend"><span class="l-own">in place</span><span class="l-equip">owned, equip it</span><span class="l-bank">in bank, withdraw</span><span class="l-miss">not owned (hover for how to get it)</span></div>
-</body></html>""".format(title=html.escape(title), css=CSS, rsn=html.escape(snap.get("rsn", "?")),
+{route}
+<div class="credits">Icons and map tiles: OSRS Wiki. Transport data: Shortest Path plugin (BSD-2). Arrows are straight lines, not walking paths.</div>
+</body></html>""".format(title=html.escape(title), css=CSS + maps.CSS, rsn=html.escape(snap.get("rsn", "?")),
                          type=snap.get("accountType"), age=check.age(snap.get("capturedAt")), slots=slots,
-                         equip="".join(equip), inv="".join(inv))
+                         equip="".join(equip), inv="".join(inv), route=route)
 
 
 def main(argv=None):
@@ -167,6 +179,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     global ICON_PATHS
     ICON_PATHS = args.icon_paths
+    maps.EMBED = not args.icon_paths
 
     try:
         plan = json.loads(sys.stdin.read() if args.file == "-" else Path(args.file).read_text(encoding="utf-8"))

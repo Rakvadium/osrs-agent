@@ -6,7 +6,9 @@ Scripts live in this skill's `scripts/` folder. Run them with `python` (or `pyth
 
 - `check.py snapshots | status | has <items...> | quest <name> | plan <file>`: compares against the account snapshot. Add `--rsn NAME` when needed.
 - `wiki.py item | quest | recipe | sources | page | price | icon | search <name>`: wiki lookups (`--help` lists options).
-- `card.py <plan file>`: renders a plan's loadout as an in-game-style inventory and equipment card (HTML).
+- `card.py <plan file>`: renders a plan as an in-game-style card: equipment, inventory, and route maps (HTML).
+- `transport.py find <teleport | fairy ring code | transport>`: where a teleport lands (game coordinates) and what it requires.
+- `wiki.py coords <page> [--section]`: game coordinates of the map pins on a wiki page (patches, shops, fishing spots, ...).
 
 ## 1. Read the ask
 
@@ -134,7 +136,10 @@ Stage 1 — <unlocks> — needs: <requirements with your current levels>
 
 All classes end with `## Verify in-game`, covering the blind spots below and any `[CHECK]` items.
 
-**Loadout card.** Whenever the answer includes a loadout, render it as an image card. Run `card.py <plan file> --rsn NAME --title "<activity>"` on the same plan JSON you checked in step 5. Before rendering, give every item that isn't in place a `"note"` saying how to get it ("Stage 3: Ardougne Medium diary", "GE ~230 gp"); the note shows on hover. Use exact wiki item names: icons are looked up by name, and anything without an icon appears as plain text on the card. Put the path the script prints into the answer as a link.
+**Plan card.** Whenever the answer includes a loadout or a route, render it as an image card. Run `card.py <plan file> --rsn NAME --title "<activity>"` on the same plan JSON you checked in step 5. Put the path the script prints into the answer as a link.
+
+- **Loadout:** before rendering, give every item that isn't in place a `"note"` saying how to get it ("Stage 3: Ardougne Medium diary", "GE ~230 gp"); the note shows on hover. Use exact wiki item names: icons are looked up by name, and anything without an icon appears as plain text on the card.
+- **Route:** add a `"route"` list with one leg per route step (`card.py --help` shows the format). Take each leg's `"arrive"` point from `transport.py find "<teleport>"`, and its `"target"` from `wiki.py coords "<page>"`. Never estimate coordinates. Mark legs the account can't use yet with `"locked": "<stage>"`.
 
 ## Blind spots
 
